@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <defs>
+    <radialGradient id="bg" cx="38%" cy="28%" r="78%">
+      <stop offset="0%" stop-color="#1e40af"/>
+      <stop offset="100%" stop-color="#0a1540"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef3c7"/>
+      <stop offset="50%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </linearGradient>
+  </defs>
+  <circle cx="96" cy="96" r="96" fill="#0a1540"/>
+  <circle cx="96" cy="96" r="90" fill="url(#bg)"/>
+  <circle cx="96" cy="96" r="88" fill="none" stroke="#f59e0b" stroke-width="3"/>
+  <rect x="20" y="76" width="152" height="72" rx="12" fill="#0c1e5c" stroke="#3b82f6" stroke-width="2.5"/>
+  <rect x="24" y="80" width="144" height="52" rx="10" fill="#e0f2fe"/>
+  <line x1="32" y1="92" x2="160" y2="92" stroke="#7dd3fc" stroke-width="2"/>
+  <line x1="32" y1="100" x2="160" y2="100" stroke="#7dd3fc" stroke-width="1.5"/>
+  <line x1="32" y1="108" x2="160" y2="108" stroke="#7dd3fc" stroke-width="1.5"/>
+  <line x1="32" y1="116" x2="160" y2="116" stroke="#7dd3fc" stroke-width="1"/>
+  <rect x="26" y="48" width="56" height="34" rx="12" fill="#fff" stroke="#60a5fa" stroke-width="2.5"/>
+  <rect x="110" y="48" width="56" height="34" rx="12" fill="#fff" stroke="#60a5fa" stroke-width="2.5"/>
+  <rect x="16" y="44" width="12" height="104" rx="6" fill="#1e3a8a" stroke="#3b82f6" stroke-width="2"/>
+  <rect x="164" y="60" width="12" height="88" rx="6" fill="#1e3a8a" stroke="#3b82f6" stroke-width="2"/>
+  <rect x="26" y="146" width="16" height="26" rx="8" fill="#1e40af"/>
+  <rect x="150" y="146" width="16" height="26" rx="8" fill="#1e40af"/>
+  <polygon points="96,16 100,28 112,28 102,35 106,47 96,40 86,47 90,35 80,28 92,28" fill="url(#gold)"/>
+  <circle cx="48" cy="26" r="5" fill="url(#gold)"/>
+  <circle cx="144" cy="26" r="5" fill="url(#gold)"/>
+</svg>

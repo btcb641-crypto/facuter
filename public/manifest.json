@@ -1,0 +1,25 @@
+{
+  "name": "نظام إدارة الفواتير والمخزون",
+  "short_name": "الفواتير",
+  "description": "نظام متكامل لإدارة الفواتير والمخزون وديون الزبائن - ولد بوزيدي عمر",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f2060",
+  "theme_color": "#1e3a8a",
+  "orientation": "portrait-primary",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "categories": ["business", "finance", "productivity"],
+  "shortcuts": [
+    {
+      "name": "فاتورة جديدة",
+      "short_name": "فاتورة",
+      "url": "./index.html",
+      "icons": [{ "src": "icon.svg", "sizes": "any" }]
+    }
+  ]
+}
