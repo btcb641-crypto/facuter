@@ -12,6 +12,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        
+      - name: Fix Gradle line endings
+        run: |
+          sed -i 's/\r//g' android/gradlew
+          chmod +x android/gradlew
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -39,8 +44,6 @@ jobs:
       - name: Build APK
         run: |
           cd android
-          sed -i 's/\r$//' gradlew
-          chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
