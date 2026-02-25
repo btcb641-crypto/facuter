@@ -46,28 +46,41 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Remove problematic gradle.properties
+      # 🔥 حل جديد: تعطيل جميع خيارات Java و Gradle
+      - name: Disable all Java/Gradle options
         run: |
-          if [ -f android/gradle.properties ]; then
-            cp android/gradle.properties android/gradle.properties.bak
-            rm android/gradle.properties
-          fi
+          echo "JAVA_OPTS=" >> $GITHUB_ENV
+          echo "GRADLE_OPTS=" >> $GITHUB_ENV
+          echo "_JAVA_OPTIONS=" >> $GITHUB_ENV
+          echo "JAVA_TOOL_OPTIONS=" >> $GITHUB_ENV
+
+      # 🔥 إعادة إنشاء مجلد android من الصفر
+      - name: Recreate Android folder
+        run: |
+          rm -rf android
+          npx cap add android
+          npx cap sync
+
+      # 🔥 إنشاء gradle.properties جديد ونظيف
+      - name: Create clean gradle.properties
+        run: |
+          cat > android/gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx2048m
+          android.useAndroidX=true
+          android.enableJetifier=true
+          EOF
+          echo "✅ Created new gradle.properties"
 
       - name: Build debug APK
         run: |
           cd android
-          export JAVA_OPTS="-Xmx1024m"
-          export GRADLE_OPTS="-Xmx1024m"
+          echo "📦 Building APK with clean config..."
           ./gradlew clean assembleDebug --no-daemon
         env:
-          JAVA_OPTS: "-Xmx1024m"
-          GRADLE_OPTS: "-Xmx1024m"
-
-      - name: Restore gradle.properties
-        run: |
-          if [ -f android/gradle.properties.bak ]; then
-            mv android/gradle.properties.bak android/gradle.properties
-          fi
+          JAVA_OPTS: ""
+          GRADLE_OPTS: ""
+          _JAVA_OPTIONS: ""
+          JAVA_TOOL_OPTIONS: ""
 
       - name: Verify APK exists
         run: |
