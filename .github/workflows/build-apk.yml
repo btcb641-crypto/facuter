@@ -13,28 +13,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Fix line endings for all files
+      - name: Fix all line endings and clean gradle.properties
         run: |
+          # إصلاح جميع الملفات
+          find android -type f -name "*.gradle" -exec sed -i 's/\r$//' {} \;
+          find android -type f -name "*.properties" -exec sed -i 's/\r$//' {} \;
+          
           # إصلاح ملف gradlew
           if [ -f android/gradlew ]; then
             sed -i 's/\r$//' android/gradlew
             chmod +x android/gradlew
-            echo "✅ Fixed gradlew"
           fi
           
-          # إصلاح ملف gradle.properties
+          # ✅ حل المشكلة الرئيسية: إعادة كتابة gradle.properties من جديد
           if [ -f android/gradle.properties ]; then
-            sed -i 's/\r$//' android/gradle.properties
-            echo "✅ Fixed gradle.properties"
+            echo "🔧 Fixing gradle.properties..."
+            # إنشاء ملف جديد بدون أي \r
+            cat android/gradle.properties | tr -d '\r' > android/gradle.properties.tmp
+            mv android/gradle.properties.tmp android/gradle.properties
+            echo "✅ gradle.properties cleaned"
           fi
           
-          # إصلاح جميع ملفات .gradle
-          find android -name "*.gradle" -type f -exec sed -i 's/\r$//' {} \;
-          echo "✅ Fixed all .gradle files"
-          
-          # إصلاح أي ملفات أخرى قد تسبب مشاكل
-          find android -name "*.properties" -type f -exec sed -i 's/\r$//' {} \;
-          echo "✅ Fixed all .properties files"
+          # عرض محتوى الملف للتأكد
+          echo "📄 gradle.properties content:"
+          cat -A android/gradle.properties || echo "No file"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -51,23 +53,18 @@ jobs:
       - name: Install Capacitor
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
-          echo "✅ Capacitor installed"
 
       - name: Add Android platform
         run: |
           npx cap add android || echo "Android platform already exists"
-          echo "✅ Android platform ready"
 
       - name: Sync Capacitor
-        run: |
-          npx cap sync
-          echo "✅ Capacitor synced"
+        run: npx cap sync
 
       - name: Verify Android project
         run: |
           if [ -d "android" ]; then
             echo "✅ Android folder exists"
-            ls -la android/
           else
             echo "❌ Android folder not found!"
             exit 1
@@ -83,14 +80,30 @@ jobs:
         run: |
           echo "JAVA_OPTS=" >> $GITHUB_ENV
           echo "GRADLE_OPTS=" >> $GITHUB_ENV
-          echo "✅ Environment variables cleaned"
 
       - name: Build debug APK
         run: |
           cd android
           echo "📦 Building APK..."
-          ./gradlew clean
-          ./gradlew assembleDebug --no-daemon
+          
+          # ✅ تجاهل أي إعدادات gradle.properties واستخدام الإعدادات النظيفة
+          export JAVA_OPTS="-Xmx1024m"
+          export GRADLE_OPTS="-Xmx1024m"
+          
+          # ✅ حذف أو تعطيل سطر org.gradle.jvmargs مؤقتاً
+          if [ -f gradle.properties ]; then
+            cp gradle.properties gradle.properties.backup
+            grep -v "org.gradle.jvmargs" gradle.properties > gradle.properties.tmp
+            mv gradle.properties.tmp gradle.properties
+          fi
+          
+          # تنفيذ build
+          ./gradlew clean assembleDebug --no-daemon
+          
+          # استعادة الملف الأصلي
+          if [ -f gradle.properties.backup ]; then
+            mv gradle.properties.backup gradle.properties
+          fi
         env:
           JAVA_OPTS: "-Xmx1024m"
           GRADLE_OPTS: "-Xmx1024m"
@@ -99,7 +112,6 @@ jobs:
         run: |
           if [ -f "android/app/build/outputs/apk/debug/app-debug.apk" ]; then
             echo "✅ APK built successfully"
-            ls -la android/app/build/outputs/apk/debug/
           else
             echo "❌ APK not found!"
             exit 1
