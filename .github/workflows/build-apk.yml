@@ -48,12 +48,30 @@ jobs:
       - name: Build web application
         run: npm run build
 
-      - name: Install Capacitor Android
-        run: npm install @capacitor/android
+      - name: Install Capacitor
+        run: |
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          echo "✅ Capacitor installed"
 
-      - name: Sync Capacitor with Android
-        # ✅ تم تصحيح هذا السطر
-        run: npx cap sync
+      - name: Add Android platform
+        run: |
+          npx cap add android || echo "Android platform already exists"
+          echo "✅ Android platform ready"
+
+      - name: Sync Capacitor
+        run: |
+          npx cap sync
+          echo "✅ Capacitor synced"
+
+      - name: Verify Android project
+        run: |
+          if [ -d "android" ]; then
+            echo "✅ Android folder exists"
+            ls -la android/
+          else
+            echo "❌ Android folder not found!"
+            exit 1
+          fi
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4
@@ -87,17 +105,10 @@ jobs:
             exit 1
           fi
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
-
-      - name: Upload APK as build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
