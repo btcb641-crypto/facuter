@@ -34,11 +34,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # ── 3. إعداد Node.js 22 (تم التعديل هنا) ──
+      # ── 3. إعداد Node.js 22 ──
       - name: 🟢 Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '22'        # ✅ تغيير من 20 إلى 22
+          node-version: '22'
           cache: npm
 
       # ── 4. تثبيت تبعيات المشروع ──
@@ -92,58 +92,73 @@ jobs:
         run: |
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
-      # ── 11. إصلاح gradle.properties ──
-      - name: ⚙️ Fix gradle.properties
-        run: |
-          GRADLE_PROPS="android/gradle.properties"
-          # احذف أي سطر يحتوي على jvmargs قديم
-          sed -i '/org.gradle.jvmargs/d' "$GRADLE_PROPS" || true
-          # أضف إعدادات صحيحة
-          cat >> "$GRADLE_PROPS" << 'EOF'
-
-          org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=512m
-          org.gradle.daemon=false
-          org.gradle.parallel=false
-          org.gradle.configureondemand=false
-          android.useAndroidX=true
-          android.enableJetifier=true
-          EOF
-          echo "── gradle.properties ──"
-          cat "$GRADLE_PROPS"
-
-      # ── 12. صلاحيات Gradle ──
+      # ── 11. صلاحيات Gradle ──
       - name: 🔑 Grant Gradle permissions
         run: chmod +x android/gradlew
 
-      # ── 13. بناء APK Debug ──
+      # 🔥 ===== الحل النهائي لمشكلة -Xmx64m =====
+      # ── 12. حذف ملف gradle.properties القديم ──
+      - name: 🗑️ Remove problematic gradle.properties
+        run: |
+          if [ -f android/gradle.properties ]; then
+            echo "📦 Backup and remove old gradle.properties"
+            cp android/gradle.properties android/gradle.properties.bak
+            rm android/gradle.properties
+            echo "✅ Old gradle.properties removed"
+          fi
+
+      # ── 13. إنشاء ملف gradle.properties جديد ونظيف ──
+      - name: 📝 Create clean gradle.properties
+        run: |
+          cat > android/gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
+          org.gradle.daemon=false
+          android.useAndroidX=true
+          android.enableJetifier=true
+          EOF
+          echo "✅ New clean gradle.properties created"
+          echo "── Content ──"
+          cat android/gradle.properties
+
+      # ── 14. تعطيل جميع متغيرات البيئة ──
+      - name: 🧹 Clean environment variables
+        run: |
+          echo "JAVA_OPTS=" >> $GITHUB_ENV
+          echo "GRADLE_OPTS=" >> $GITHUB_ENV
+          echo "JAVA_TOOL_OPTIONS=" >> $GITHUB_ENV
+          echo "✅ Environment variables cleaned"
+
+      # ── 15. بناء APK Debug ──
       - name: 🏗️ Build DEBUG APK
         if: ${{ github.event.inputs.build_type != 'release' }}
         working-directory: android
         env:
-          JAVA_TOOL_OPTIONS: ""
+          JAVA_OPTS: ""
           GRADLE_OPTS: ""
+          JAVA_TOOL_OPTIONS: ""
         run: |
-          ./gradlew assembleDebug \
+          echo "📦 Building DEBUG APK..."
+          ./gradlew clean assembleDebug \
             --no-daemon \
             --no-build-cache \
-            --stacktrace \
-            --info
+            --stacktrace
 
-      # ── 14. بناء APK Release ──
+      # ── 16. بناء APK Release ──
       - name: 🏗️ Build RELEASE APK
         if: ${{ github.event.inputs.build_type == 'release' }}
         working-directory: android
         env:
-          JAVA_TOOL_OPTIONS: ""
+          JAVA_OPTS: ""
           GRADLE_OPTS: ""
+          JAVA_TOOL_OPTIONS: ""
         run: |
-          ./gradlew assembleRelease \
+          echo "📦 Building RELEASE APK..."
+          ./gradlew clean assembleRelease \
             --no-daemon \
             --no-build-cache \
-            --stacktrace \
-            --info
+            --stacktrace
 
-      # ── 15. البحث عن APK وتسميته ──
+      # ── 17. البحث عن APK وتسميته ──
       - name: 🔍 Find and rename APK
         id: apk_info
         run: |
@@ -166,7 +181,7 @@ jobs:
           echo "build_type=$BUILD_TYPE" >> $GITHUB_OUTPUT
           echo "✅ APK ready: $APK_NAME ($APK_SIZE)"
 
-      # ── 16. رفع APK كـ Artifact ──
+      # ── 18. رفع APK كـ Artifact ──
       - name: 📤 Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -175,7 +190,7 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      # ── 17. إنشاء GitHub Release ──
+      # ── 19. إنشاء GitHub Release ──
       - name: 🚀 Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -211,7 +226,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── 18. ملخص نهائي ──
+      # ── 20. ملخص نهائي ──
       - name: 📊 Build Summary
         run: |
           echo "══════════════════════════════════════"
