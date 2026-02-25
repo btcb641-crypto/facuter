@@ -1,8 +1,5 @@
 name: 📱 Build Android APK
 
-# ══════════════════════════════════════════════════════════
-#  يُشغَّل يدوياً من GitHub Actions أو عند رفع كود
-# ══════════════════════════════════════════════════════════
 on:
   workflow_dispatch:
     inputs:
@@ -22,7 +19,7 @@ jobs:
   build:
     name: 🏗️ Build APK
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
 
@@ -36,170 +33,177 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
 
-      # ── 3. إعداد Node.js 22 ──
-      - name: 🟢 Setup Node.js 22
+      # ── 3. إعداد Node.js 20 ──
+      - name: 🟢 Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
           cache: npm
 
       # ── 4. تثبيت تبعيات المشروع ──
       - name: 📦 Install npm dependencies
-        run: npm ci --prefer-offline || npm install
+        run: npm ci || npm install
 
-      # ── 5. بناء مشروع Vite (ينتج مجلد dist/) ──
+      # ── 5. بناء مشروع Vite ──
       - name: 🔨 Build Vite project
         run: npm run build
         env:
           NODE_ENV: production
 
       # ── 6. تثبيت Capacitor ──
-      - name: ⚡ Install Capacitor packages
+      - name: ⚡ Install Capacitor
         run: |
-          npm install --save-exact \
-            @capacitor/core@latest \
-            @capacitor/cli@latest \
-            @capacitor/android@latest
+          npm install --save \
+            @capacitor/core@5.7.0 \
+            @capacitor/cli@5.7.0 \
+            @capacitor/android@5.7.0
 
-      # ── 7. إنشاء capacitor.config.json إن لم يوجد ──
-      - name: 📝 Ensure capacitor.config.json
+      # ── 7. إنشاء capacitor.config.json ──
+      - name: 📝 Create capacitor.config.json
         run: |
-          cat > capacitor.config.json << 'EOF'
+          cat > capacitor.config.json << 'CAPEOF'
           {
             "appId": "com.ouldbouzidi.invoicemanager",
             "appName": "نظام الفواتير",
             "webDir": "dist",
             "android": {
               "allowMixedContent": true,
-              "captureInput": true,
               "webContentsDebuggingEnabled": false
             }
           }
-          EOF
+          CAPEOF
 
-      # ── 8. إضافة منصة Android (إذا لم تكن موجودة) ──
+      # ── 8. إضافة منصة Android ──
       - name: 📱 Add Android platform
         run: |
           if [ ! -f "android/app/build.gradle" ]; then
-            echo "Adding Android platform..."
             npx cap add android
           else
-            echo "Android platform already exists"
+            echo "Android already exists"
           fi
 
-      # ── 9. مزامنة Capacitor مع Android ──
-      - name: 🔄 Sync Capacitor with Android
+      # ── 9. مزامنة Capacitor ──
+      - name: 🔄 Sync Capacitor
         run: npx cap sync android
 
-      # ── 10. إنشاء local.properties مع Android SDK ──
+      # ── 10. إعداد local.properties ──
       - name: 🔧 Setup Android SDK path
         run: |
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
-          cat android/local.properties
 
-      # ── 11. إعداد صلاحيات Gradle ──
-      - name: 🔑 Grant execute permission to gradlew
+      # ── 11. إصلاح gradle.properties — هذا هو حل الخطأ ──
+      - name: ⚙️ Fix gradle.properties
+        run: |
+          GRADLE_PROPS="android/gradle.properties"
+          # احذف أي سطر يحتوي على jvmargs قديم
+          sed -i '/org.gradle.jvmargs/d' "$GRADLE_PROPS" || true
+          # أضف إعدادات صحيحة
+          cat >> "$GRADLE_PROPS" << 'EOF'
+
+          org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=512m
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.configureondemand=false
+          android.useAndroidX=true
+          android.enableJetifier=true
+          EOF
+          echo "── gradle.properties ──"
+          cat "$GRADLE_PROPS"
+
+      # ── 12. صلاحيات Gradle ──
+      - name: 🔑 Grant Gradle permissions
         run: chmod +x android/gradlew
-
-      # ── 12. تنزيل تبعيات Gradle (مع cache) ──
-      - name: 📥 Download Gradle dependencies
-        working-directory: android
-        run: ./gradlew dependencies --no-daemon --quiet || true
 
       # ── 13. بناء APK Debug ──
       - name: 🏗️ Build DEBUG APK
         if: ${{ github.event.inputs.build_type != 'release' }}
         working-directory: android
+        env:
+          JAVA_TOOL_OPTIONS: ""
+          GRADLE_OPTS: ""
         run: |
           ./gradlew assembleDebug \
             --no-daemon \
+            --no-build-cache \
             --stacktrace \
-            -Dorg.gradle.jvmargs="-Xmx3072m" \
-            -Dorg.gradle.daemon=false
+            --info
 
-      # ── 14. بناء APK Release (بدون توقيع) ──
+      # ── 14. بناء APK Release ──
       - name: 🏗️ Build RELEASE APK
         if: ${{ github.event.inputs.build_type == 'release' }}
         working-directory: android
+        env:
+          JAVA_TOOL_OPTIONS: ""
+          GRADLE_OPTS: ""
         run: |
           ./gradlew assembleRelease \
             --no-daemon \
+            --no-build-cache \
             --stacktrace \
-            -Dorg.gradle.jvmargs="-Xmx3072m" \
-            -Dorg.gradle.daemon=false
+            --info
 
-      # ── 15. إيجاد ملف APK وتسميته ──
-      - name: 🔍 Locate and rename APK
+      # ── 15. البحث عن APK وتسميته ──
+      - name: 🔍 Find and rename APK
         id: apk_info
         run: |
-          APK_PATH=$(find android -name "*.apk" -not -path "*/intermediates/*" | head -1)
+          BUILD_TYPE="${{ github.event.inputs.build_type || 'debug' }}"
+          APK_PATH=$(find android/app/build/outputs/apk -name "*.apk" | head -1)
+
           if [ -z "$APK_PATH" ]; then
-            echo "❌ APK not found!"
-            find android -name "*.apk" || true
+            echo "❌ APK not found! Searching everywhere..."
+            find android -name "*.apk" 2>/dev/null || echo "No APK found"
             exit 1
           fi
-          APK_NAME="invoice-manager-${{ github.event.inputs.build_type || 'debug' }}-v${{ github.run_number }}.apk"
+
+          echo "✅ Found APK: $APK_PATH"
+          APK_NAME="invoice-manager-${BUILD_TYPE}-v${{ github.run_number }}.apk"
           cp "$APK_PATH" "$APK_NAME"
           APK_SIZE=$(du -sh "$APK_NAME" | cut -f1)
-          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+
           echo "apk_name=$APK_NAME" >> $GITHUB_OUTPUT
           echo "apk_size=$APK_SIZE" >> $GITHUB_OUTPUT
+          echo "build_type=$BUILD_TYPE" >> $GITHUB_OUTPUT
           echo "✅ APK ready: $APK_NAME ($APK_SIZE)"
 
-      # ── 16. رفع APK كـ Artifact (صالح 30 يوم) ──
-      - name: 📤 Upload APK as Artifact
+      # ── 16. رفع APK كـ Artifact ──
+      - name: 📤 Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 📱 invoice-manager-apk-v${{ github.run_number }}
+          name: invoice-manager-apk-v${{ github.run_number }}
           path: ${{ steps.apk_info.outputs.apk_name }}
           retention-days: 30
           if-no-files-found: error
 
-      # ── 17. إنشاء GitHub Release تلقائي ──
+      # ── 17. إنشاء GitHub Release ──
       - name: 🚀 Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}-apk
-          name: "📱 نظام الفواتير - APK Build #${{ github.run_number }}"
+          name: "📱 نظام الفواتير - Build #${{ github.run_number }}"
           body: |
             ## 📱 نظام إدارة الفواتير والمخزون
-            ### تطبيق أندرويد جاهز للتثبيت
-
-            ---
 
             ### ⬇️ كيفية التثبيت:
-            1. **حمّل** ملف `.apk` من قسم **Assets** أدناه
-            2. **انقل** الملف إلى هاتفك (عبر USB أو واتساب أو Bluetooth)
-            3. **فعّل** "تثبيت من مصادر غير معروفة":
-               - اذهب إلى **الإعدادات → الأمان** (أو تطبيقات → خيارات متقدمة)
-               - فعّل **"مصادر غير معروفة"** أو **"السماح بتثبيت التطبيقات"**
-            4. **افتح** ملف APK واضغط **تثبيت** ✅
-
-            ---
+            1. حمّل ملف `.apk` من قسم **Assets** أدناه
+            2. انقل الملف إلى هاتفك
+            3. فعّل **"مصادر غير معروفة"** في الإعدادات
+            4. افتح ملف APK واضغط **تثبيت** ✅
 
             ### 📋 معلومات البناء:
             | | |
             |---|---|
             | 🔢 **رقم البناء** | #${{ github.run_number }} |
             | 📦 **الحجم** | ${{ steps.apk_info.outputs.apk_size }} |
-            | 🔧 **النوع** | ${{ github.event.inputs.build_type || 'debug' }} |
-            | 📅 **التاريخ** | ${{ github.run_started_at }} |
-            | 🤖 **Android** | API 23+ (6.0 فأعلى) |
-
-            ---
+            | 🔧 **النوع** | ${{ steps.apk_info.outputs.build_type }} |
+            | 🤖 **Android** | API 22+ (5.1 فأعلى) |
 
             ### ✨ مميزات التطبيق:
-            - 🧾 إنشاء وطباعة الفواتير بتصميم احترافي
-            - 👥 إدارة الزبائن وبياناتهم
-            - 📦 متابعة المخزون والمنتجات
-            - 💰 تتبع ديون الزبائن والدفعات
-            - 📄 تصدير الفواتير بصيغة PDF
-            - 💾 حفظ البيانات محلياً (بدون إنترنت)
-
-            ---
-            > ⚠️ **ملاحظة:** هذا بناء تجريبي (Debug). للنشر على Google Play يلزم بناء Release موقّع.
+            - 🧾 إنشاء وطباعة الفواتير احترافياً
+            - 👥 إدارة الزبائن والديون
+            - 📦 متابعة المخزون
+            - 📄 تصدير PDF
+            - 💾 يعمل بدون إنترنت
           files: ${{ steps.apk_info.outputs.apk_name }}
           draft: false
           prerelease: ${{ github.event.inputs.build_type != 'release' }}
@@ -210,11 +214,9 @@ jobs:
       # ── 18. ملخص نهائي ──
       - name: 📊 Build Summary
         run: |
-          echo "═══════════════════════════════════════════"
-          echo "  ✅ تم بناء APK بنجاح!"
-          echo "═══════════════════════════════════════════"
-          echo "  📱 الملف: ${{ steps.apk_info.outputs.apk_name }}"
-          echo "  📏 الحجم: ${{ steps.apk_info.outputs.apk_size }}"
-          echo "  🔗 Artifacts: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          echo "  🏷️ Release: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/v${{ github.run_number }}-apk"
-          echo "═══════════════════════════════════════════"
+          echo "══════════════════════════════════════"
+          echo "  ✅ APK تم بنجاح!"
+          echo "  📱 الملف : ${{ steps.apk_info.outputs.apk_name }}"
+          echo "  📏 الحجم : ${{ steps.apk_info.outputs.apk_size }}"
+          echo "  🔗 رابط  : $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases"
+          echo "══════════════════════════════════════"
