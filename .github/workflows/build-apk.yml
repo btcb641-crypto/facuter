@@ -24,8 +24,12 @@ jobs:
       - name: Build web
         run: npm run build
 
+      - name: Install Capacitor Android
+        run: npm install @capacitor/android
+
       - name: Sync Capacitor
-        run: npx @capacitor/cli sync android  
+        run: npx @capacitor/cli sync android
+
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
