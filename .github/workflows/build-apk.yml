@@ -13,11 +13,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Fix line endings
-        run: |
-          find android -type f -name "*.gradle" -exec sed -i 's/\r$//' {} \;
-          find android -type f -name "*.properties" -exec sed -i 's/\r$//' {} \;
-          [ -f android/gradlew ] && sed -i 's/\r$//' android/gradlew && chmod +x android/gradlew
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -28,68 +28,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build web application
+      - name: Build web
         run: npm run build
 
-      - name: Install Capacitor
-        run: npm install @capacitor/core @capacitor/cli @capacitor/android
-
-      - name: Add Android platform
-        run: npx cap add android || true
-
       - name: Sync Capacitor
-        run: npx cap sync
-
-      - name: Setup JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      # 🔥 حل جديد: تعطيل جميع خيارات Java و Gradle
-      - name: Disable all Java/Gradle options
         run: |
-          echo "JAVA_OPTS=" >> $GITHUB_ENV
-          echo "GRADLE_OPTS=" >> $GITHUB_ENV
-          echo "_JAVA_OPTIONS=" >> $GITHUB_ENV
-          echo "JAVA_TOOL_OPTIONS=" >> $GITHUB_ENV
-
-      # 🔥 إعادة إنشاء مجلد android من الصفر
-      - name: Recreate Android folder
-        run: |
-          rm -rf android
-          npx cap add android
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          npx cap add android || true
           npx cap sync
 
-      # 🔥 إنشاء gradle.properties جديد ونظيف
-      - name: Create clean gradle.properties
-        run: |
-          cat > android/gradle.properties << 'EOF'
-          org.gradle.jvmargs=-Xmx2048m
-          android.useAndroidX=true
-          android.enableJetifier=true
-          EOF
-          echo "✅ Created new gradle.properties"
-
-      - name: Build debug APK
+      # 🔥 حل متطرف: استخدام Docker
+      - name: Build with Docker
         run: |
           cd android
-          echo "📦 Building APK with clean config..."
-          ./gradlew clean assembleDebug --no-daemon
-        env:
-          JAVA_OPTS: ""
-          GRADLE_OPTS: ""
-          _JAVA_OPTIONS: ""
-          JAVA_TOOL_OPTIONS: ""
-
-      - name: Verify APK exists
-        run: |
-          if [ -f "android/app/build/outputs/apk/debug/app-debug.apk" ]; then
-            echo "✅ APK built successfully"
-          else
-            echo "❌ APK not found!"
-            exit 1
-          fi
+          docker run --rm -v $(pwd):/workspace -w /workspace gradle:8.2.1-jdk17 ./gradlew clean assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -97,4 +49,3 @@ jobs:
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 30
