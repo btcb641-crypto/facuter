@@ -19,7 +19,7 @@ jobs:
   build:
     name: 🏗️ Build APK
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
 
@@ -34,22 +34,36 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # ── 3. إعداد Node.js 22 ──
-      - name: 🟢 Setup Node.js 22
+      # ── 3. إعداد Node.js 20 ──
+      - name: 🟢 Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
           cache: npm
 
       # ── 4. تثبيت تبعيات المشروع ──
       - name: 📦 Install npm dependencies
         run: npm ci || npm install
 
-      # ── 5. بناء مشروع Vite ──
-      - name: 🔨 Build Vite project
-        run: npm run build
-        env:
-          NODE_ENV: production
+      # ── 5. التحقق من وجود ملفات public/ ──
+      - name: 🔍 Verify public/ files
+        run: |
+          echo "── ملفات public/ ──"
+          ls -la public/
+          echo ""
+          if [ ! -f "public/index.html" ]; then
+            echo "❌ public/index.html غير موجود!"
+            exit 1
+          fi
+          if [ ! -f "public/app.js" ]; then
+            echo "❌ public/app.js غير موجود!"
+            exit 1
+          fi
+          if [ ! -f "public/app.css" ]; then
+            echo "❌ public/app.css غير موجود!"
+            exit 1
+          fi
+          echo "✅ جميع ملفات public/ موجودة"
 
       # ── 6. تثبيت Capacitor ──
       - name: ⚡ Install Capacitor
@@ -60,126 +74,141 @@ jobs:
             @capacitor/android@5.7.0
 
       # ── 7. إنشاء capacitor.config.json ──
-      - name: 📝 Create capacitor.config.json
+      - name: 📝 Create Capacitor config
         run: |
           cat > capacitor.config.json << 'CAPEOF'
           {
             "appId": "com.ouldbouzidi.invoicemanager",
             "appName": "نظام الفواتير",
-            "webDir": "dist",
+            "webDir": "public",
             "android": {
               "allowMixedContent": true,
               "webContentsDebuggingEnabled": false
             }
           }
           CAPEOF
+          echo "── capacitor.config.json ──"
+          cat capacitor.config.json
 
-      # 🔥 ===== الحل النهائي: إعادة إنشاء مجلد android بالكامل =====
-      
-      # ── 8. حذف مجلد android القديم ──
-      - name: 🗑️ Remove old Android folder
+      # ── 8. إضافة منصة Android ──
+      - name: 📱 Add Android platform
         run: |
-          echo "🗑️ Removing old android folder..."
-          rm -rf android
-          echo "✅ Android folder removed"
+          if [ ! -f "android/app/build.gradle" ]; then
+            npx cap add android
+          else
+            echo "✅ Android platform already exists"
+          fi
 
-      # ── 9. إضافة منصة Android جديدة ──
-      - name: 📱 Add Android platform fresh
-        run: |
-          echo "📱 Adding Android platform..."
-          npx cap add android
-          echo "✅ Android platform added"
-
-      # ── 10. إنشاء gradle.properties جديد ونظيف ──
-      - name: 📝 Create fresh gradle.properties
-        run: |
-          cat > android/gradle.properties << 'EOF'
-          # إعدادات Gradle النظيفة
-          org.gradle.jvmargs=-Xmx2048m
-          org.gradle.daemon=false
-          android.useAndroidX=true
-          android.enableJetifier=true
-          EOF
-          echo "✅ Fresh gradle.properties created"
-          echo "── Content ──"
-          cat android/gradle.properties
-
-      # ── 11. مزامنة Capacitor ──
+      # ── 9. مزامنة Capacitor (ينسخ public/ → android assets) ──
       - name: 🔄 Sync Capacitor
-        run: npx cap sync android
+        run: |
+          npx cap sync android
+          echo "── محتوى android assets ──"
+          ls -la android/app/src/main/assets/public/ 2>/dev/null || echo "مجلد assets لم يُنشأ بعد"
 
-      # ── 12. إعداد local.properties ──
+      # ── 10. إعداد local.properties ──
       - name: 🔧 Setup Android SDK path
         run: |
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          echo "✅ ANDROID_HOME: $ANDROID_HOME"
 
-      # ── 13. صلاحيات Gradle ──
-      - name: 🔑 Grant Gradle permissions
-        run: chmod +x android/gradlew
-
-      # ── 14. تعطيل جميع متغيرات البيئة ──
-      - name: 🧹 Clean all environment variables
+      # ── 11. إعداد gradle.properties بشكل صحيح ──
+      - name: ⚙️ Fix gradle.properties
         run: |
-          echo "JAVA_OPTS=" >> $GITHUB_ENV
-          echo "GRADLE_OPTS=" >> $GITHUB_ENV
-          echo "JAVA_TOOL_OPTIONS=" >> $GITHUB_ENV
-          echo "_JAVA_OPTIONS=" >> $GITHUB_ENV
-          echo "✅ All environment variables cleaned"
+          GRADLE_PROPS="android/gradle.properties"
 
-      # ── 15. بناء APK Debug ──
+          # احذف أي سطر يحتوي على jvmargs قديم
+          if [ -f "$GRADLE_PROPS" ]; then
+            grep -v "org.gradle.jvmargs" "$GRADLE_PROPS" > /tmp/gradle.properties.tmp || true
+            mv /tmp/gradle.properties.tmp "$GRADLE_PROPS"
+          fi
+
+          # أضف الإعدادات الصحيحة بدون quotes حول قيم JVM
+          cat >> "$GRADLE_PROPS" << 'GRADLEOF'
+          org.gradle.jvmargs=-Xmx2560m -Dfile.encoding=UTF-8
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.configureondemand=false
+          android.useAndroidX=true
+          android.enableJetifier=true
+          GRADLEOF
+
+          echo "── محتوى gradle.properties ──"
+          cat "$GRADLE_PROPS"
+
+      # ── 12. صلاحيات Gradle ──
+      - name: 🔑 Grant Gradle permissions
+        run: |
+          chmod +x android/gradlew
+          ls -la android/gradlew
+
+      # ── 13. التحقق من إعداد Java وإزالة المتغيرات المشكلة ──
+      - name: 🔍 Verify Java setup
+        run: |
+          echo "JAVA_HOME: $JAVA_HOME"
+          java -version
+          # إظهار المتغيرات قبل المسح
+          echo "JAVA_TOOL_OPTIONS قبل المسح: '$JAVA_TOOL_OPTIONS'"
+          echo "GRADLE_OPTS قبل المسح: '$GRADLE_OPTS'"
+
+      # ── 14. بناء APK Debug ──
       - name: 🏗️ Build DEBUG APK
         if: ${{ github.event.inputs.build_type != 'release' }}
         working-directory: android
         run: |
-          echo "🔧 Disabling all Java options..."
-          # تعطيل كل شيء
-          unset JAVA_OPTS
-          unset GRADLE_OPTS
+          # مسح كل متغيرات JVM التي تسبب الخطأ
           unset JAVA_TOOL_OPTIONS
+          unset GRADLE_OPTS
           unset _JAVA_OPTIONS
-          
-          echo "📦 Building DEBUG APK without any Java options..."
-          ./gradlew clean assembleDebug --no-daemon
-        env:
-          JAVA_OPTS: ""
-          GRADLE_OPTS: ""
-          JAVA_TOOL_OPTIONS: ""
-          _JAVA_OPTIONS: ""
+          unset JDK_JAVA_OPTIONS
+          unset JAVA_OPTS
+          export JAVA_TOOL_OPTIONS=""
+          export GRADLE_OPTS=""
+          # التحقق بعد المسح
+          echo "JAVA_TOOL_OPTIONS بعد المسح: '$JAVA_TOOL_OPTIONS'"
+          # تشغيل Gradle
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --no-build-cache \
+            --warning-mode all \
+            2>&1
 
-      # ── 16. بناء APK Release ──
+      # ── 15. بناء APK Release ──
       - name: 🏗️ Build RELEASE APK
         if: ${{ github.event.inputs.build_type == 'release' }}
         working-directory: android
         run: |
-          echo "🔧 Disabling all Java options..."
-          # تعطيل كل شيء
-          unset JAVA_OPTS
-          unset GRADLE_OPTS
           unset JAVA_TOOL_OPTIONS
+          unset GRADLE_OPTS
           unset _JAVA_OPTIONS
-          
-          echo "📦 Building RELEASE APK without any Java options..."
-          ./gradlew clean assembleRelease --no-daemon
-        env:
-          JAVA_OPTS: ""
-          GRADLE_OPTS: ""
-          JAVA_TOOL_OPTIONS: ""
-          _JAVA_OPTIONS: ""
+          unset JDK_JAVA_OPTIONS
+          unset JAVA_OPTS
+          export JAVA_TOOL_OPTIONS=""
+          export GRADLE_OPTS=""
+          ./gradlew assembleRelease \
+            --no-daemon \
+            --no-build-cache \
+            --warning-mode all \
+            2>&1
 
-      # ── 17. البحث عن APK وتسميته ──
+      # ── 16. البحث عن APK وتسميته ──
       - name: 🔍 Find and rename APK
         id: apk_info
         run: |
           BUILD_TYPE="${{ github.event.inputs.build_type || 'debug' }}"
-          APK_PATH=$(find android/app/build/outputs/apk -name "*.apk" | head -1)
+
+          echo "── البحث عن APK ──"
+          find android/app/build/outputs/apk -name "*.apk" 2>/dev/null || echo "لا يوجد APK في المسار الافتراضي"
+          find android -name "*.apk" 2>/dev/null || echo "لا يوجد APK في مجلد android"
+
+          APK_PATH=$(find android/app/build/outputs/apk -name "*.apk" 2>/dev/null | head -1)
 
           if [ -z "$APK_PATH" ]; then
-            echo "❌ APK not found! Searching everywhere..."
-            find android -name "*.apk" 2>/dev/null || echo "No APK found"
+            echo "❌ APK not found!"
             exit 1
           fi
 
-          echo "✅ Found APK: $APK_PATH"
+          echo "✅ Found: $APK_PATH"
           APK_NAME="invoice-manager-${BUILD_TYPE}-v${{ github.run_number }}.apk"
           cp "$APK_PATH" "$APK_NAME"
           APK_SIZE=$(du -sh "$APK_NAME" | cut -f1)
@@ -187,9 +216,9 @@ jobs:
           echo "apk_name=$APK_NAME" >> $GITHUB_OUTPUT
           echo "apk_size=$APK_SIZE" >> $GITHUB_OUTPUT
           echo "build_type=$BUILD_TYPE" >> $GITHUB_OUTPUT
-          echo "✅ APK ready: $APK_NAME ($APK_SIZE)"
+          echo "✅ APK: $APK_NAME ($APK_SIZE)"
 
-      # ── 18. رفع APK كـ Artifact ──
+      # ── 17. رفع APK كـ Artifact ──
       - name: 📤 Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -198,7 +227,7 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      # ── 19. إنشاء GitHub Release ──
+      # ── 18. إنشاء GitHub Release ──
       - name: 🚀 Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -219,7 +248,8 @@ jobs:
             | 🔢 **رقم البناء** | #${{ github.run_number }} |
             | 📦 **الحجم** | ${{ steps.apk_info.outputs.apk_size }} |
             | 🔧 **النوع** | ${{ steps.apk_info.outputs.build_type }} |
-            | 🤖 **Android** | API 22+ (5.1 فأعلى) |
+            | 🤖 **Android** | API 23+ (6.0 فأعلى) |
+            | 🌐 **المحرك** | HTML + CSS + JS (بدون React) |
 
             ### ✨ مميزات التطبيق:
             - 🧾 إنشاء وطباعة الفواتير احترافياً
@@ -227,6 +257,7 @@ jobs:
             - 📦 متابعة المخزون
             - 📄 تصدير PDF
             - 💾 يعمل بدون إنترنت
+            - 📱 واجهة متجاوبة مع الهاتف
           files: ${{ steps.apk_info.outputs.apk_name }}
           draft: false
           prerelease: ${{ github.event.inputs.build_type != 'release' }}
@@ -234,12 +265,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── 20. ملخص نهائي ──
+      # ── 19. ملخص نهائي ──
       - name: 📊 Build Summary
         run: |
           echo "══════════════════════════════════════"
           echo "  ✅ APK تم بنجاح!"
           echo "  📱 الملف : ${{ steps.apk_info.outputs.apk_name }}"
           echo "  📏 الحجم : ${{ steps.apk_info.outputs.apk_size }}"
+          echo "  🌐 المحتوى: public/ (HTML+CSS+JS)"
           echo "  🔗 رابط  : $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases"
           echo "══════════════════════════════════════"
