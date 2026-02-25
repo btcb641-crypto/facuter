@@ -112,6 +112,43 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
           echo "✅ ANDROID_HOME: $ANDROID_HOME"
 
+      # ── 10b. إعداد Gradle الرسمي ──
+      - name: 🐘 Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.4"
+
+      # ── 10c. إنشاء gradle-wrapper.jar بالطريقة الرسمية ──
+      - name: 📦 Generate gradle-wrapper.jar
+        run: |
+          echo "── إنشاء gradle-wrapper.jar ──"
+          mkdir -p android/gradle/wrapper
+
+          # إنشاء gradle-wrapper.properties بالإصدار الصحيح
+          cat > android/gradle/wrapper/gradle-wrapper.properties << 'WRAPEOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.4-bin.zip
+          networkTimeout=10000
+          validateDistributionUrl=true
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          WRAPEOF
+
+          # استخدام gradle المثبت لإنشاء wrapper
+          cd android
+          gradle wrapper --gradle-version 8.4 --distribution-type bin
+          cd ..
+
+          # التحقق
+          if [ -f "android/gradle/wrapper/gradle-wrapper.jar" ]; then
+            echo "✅ gradle-wrapper.jar تم إنشاؤه: $(du -sh android/gradle/wrapper/gradle-wrapper.jar)"
+          else
+            echo "❌ فشل إنشاء gradle-wrapper.jar"
+            ls -la android/gradle/wrapper/
+            exit 1
+          fi
+
       # ── 11. إعداد gradle.properties بشكل صحيح ──
       - name: ⚙️ Fix gradle.properties
         run: |
@@ -136,60 +173,86 @@ jobs:
           echo "── محتوى gradle.properties ──"
           cat "$GRADLE_PROPS"
 
-      # ── 12. صلاحيات Gradle ──
-      - name: 🔑 Grant Gradle permissions
+      # ── 12. التحقق من gradle-wrapper.jar وإصلاح الصلاحيات ──
+      - name: 🔑 Verify gradle-wrapper.jar and fix permissions
         run: |
+          echo "── محتوى android/gradle/wrapper/ ──"
+          ls -la android/gradle/wrapper/
+
+          if [ ! -f "android/gradle/wrapper/gradle-wrapper.jar" ]; then
+            echo "❌ gradle-wrapper.jar غير موجود حتى بعد خطوة الإنشاء!"
+            exit 1
+          fi
+
+          echo "✅ gradle-wrapper.jar موجود: $(du -sh android/gradle/wrapper/gradle-wrapper.jar)"
           chmod +x android/gradlew
-          ls -la android/gradlew
+          echo "✅ صلاحيات gradlew: $(ls -la android/gradlew)"
 
       # ── 13. التحقق من إعداد Java وإزالة المتغيرات المشكلة ──
-      - name: 🔍 Verify Java setup
+      - name: 🔍 Verify Java setup and gradle wrapper
         run: |
           echo "JAVA_HOME: $JAVA_HOME"
           java -version
-          # إظهار المتغيرات قبل المسح
-          echo "JAVA_TOOL_OPTIONS قبل المسح: '$JAVA_TOOL_OPTIONS'"
-          echo "GRADLE_OPTS قبل المسح: '$GRADLE_OPTS'"
+          # التحقق من gradle-wrapper.jar
+          echo "── التحقق من gradle-wrapper.jar ──"
+          ls -la android/gradle/wrapper/
+          # التحقق أن الملف jar صالح
+          file android/gradle/wrapper/gradle-wrapper.jar || echo "ملف jar موجود"
+          java -cp android/gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain --version 2>&1 | head -5 || echo "سيتم التحقق عند البناء"
+          echo "JAVA_TOOL_OPTIONS: '$JAVA_TOOL_OPTIONS'"
+          echo "GRADLE_OPTS: '$GRADLE_OPTS'"
 
       # ── 14. بناء APK Debug ──
       - name: 🏗️ Build DEBUG APK
         if: ${{ github.event.inputs.build_type != 'release' }}
         working-directory: android
+        env:
+          JAVA_TOOL_OPTIONS: ""
+          GRADLE_OPTS: ""
+          _JAVA_OPTIONS: ""
+          JDK_JAVA_OPTIONS: ""
         run: |
-          # مسح كل متغيرات JVM التي تسبب الخطأ
-          unset JAVA_TOOL_OPTIONS
-          unset GRADLE_OPTS
-          unset _JAVA_OPTIONS
-          unset JDK_JAVA_OPTIONS
-          unset JAVA_OPTS
-          export JAVA_TOOL_OPTIONS=""
-          export GRADLE_OPTS=""
-          # التحقق بعد المسح
-          echo "JAVA_TOOL_OPTIONS بعد المسح: '$JAVA_TOOL_OPTIONS'"
-          # تشغيل Gradle
-          ./gradlew assembleDebug \
-            --no-daemon \
-            --no-build-cache \
-            --warning-mode all \
-            2>&1
+          unset JAVA_TOOL_OPTIONS GRADLE_OPTS _JAVA_OPTIONS JDK_JAVA_OPTIONS JAVA_OPTS
+          echo "✅ JAVA_TOOL_OPTIONS: '${JAVA_TOOL_OPTIONS:-}'"
+
+          # محاولة البناء بـ ./gradlew أولاً
+          if [ -f "gradle/wrapper/gradle-wrapper.jar" ]; then
+            echo "── البناء بـ ./gradlew ──"
+            ./gradlew assembleDebug \
+              --no-daemon \
+              --no-build-cache \
+              --stacktrace \
+              2>&1
+          else
+            echo "── البناء بـ gradle مباشرة ──"
+            gradle assembleDebug \
+              --no-daemon \
+              --no-build-cache \
+              2>&1
+          fi
 
       # ── 15. بناء APK Release ──
       - name: 🏗️ Build RELEASE APK
         if: ${{ github.event.inputs.build_type == 'release' }}
         working-directory: android
+        env:
+          JAVA_TOOL_OPTIONS: ""
+          GRADLE_OPTS: ""
+          _JAVA_OPTIONS: ""
+          JDK_JAVA_OPTIONS: ""
         run: |
-          unset JAVA_TOOL_OPTIONS
-          unset GRADLE_OPTS
-          unset _JAVA_OPTIONS
-          unset JDK_JAVA_OPTIONS
-          unset JAVA_OPTS
-          export JAVA_TOOL_OPTIONS=""
-          export GRADLE_OPTS=""
-          ./gradlew assembleRelease \
-            --no-daemon \
-            --no-build-cache \
-            --warning-mode all \
-            2>&1
+          unset JAVA_TOOL_OPTIONS GRADLE_OPTS _JAVA_OPTIONS JDK_JAVA_OPTIONS JAVA_OPTS
+          if [ -f "gradle/wrapper/gradle-wrapper.jar" ]; then
+            ./gradlew assembleRelease \
+              --no-daemon \
+              --no-build-cache \
+              2>&1
+          else
+            gradle assembleRelease \
+              --no-daemon \
+              --no-build-cache \
+              2>&1
+          fi
 
       # ── 16. البحث عن APK وتسميته ──
       - name: 🔍 Find and rename APK
