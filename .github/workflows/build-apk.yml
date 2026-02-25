@@ -25,9 +25,7 @@ jobs:
         run: npm run build
 
       - name: Sync Capacitor
-        run: npx cap sync android
-
-      # ←←← الجزء الجديد المهم جداً (بدونها الـ build يفشل)
+        run: npx @capacitor/cli sync android  
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
