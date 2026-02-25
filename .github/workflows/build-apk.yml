@@ -38,11 +38,11 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      # ── 3. إعداد Node.js 20 ──
-      - name: 🟢 Setup Node.js 20
+      # ── 3. إعداد Node.js 22 ──
+      - name: 🟢 Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       # ── 4. تثبيت تبعيات المشروع ──
