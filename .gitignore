@@ -16,6 +16,10 @@ android/local.properties
 *.keystore
 *.jks
 
+# السماح برفع gradle-wrapper.jar على GitHub (ضروري للبناء)
+!android/gradle/wrapper/gradle-wrapper.jar
+!android/gradle/wrapper/gradle-wrapper.properties
+
 # Capacitor
 android/app/src/main/assets/public/
 
