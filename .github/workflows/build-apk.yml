@@ -10,30 +10,49 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
-        
-      - name: Fix Gradle line endings
-        run: |
-          sed -i 's/\r//g' android/gradlew
-          chmod +x android/gradlew
 
-      - name: Setup Node
+      - name: Fix line endings for all files
+        run: |
+          # إصلاح ملف gradlew
+          if [ -f android/gradlew ]; then
+            sed -i 's/\r$//' android/gradlew
+            chmod +x android/gradlew
+            echo "✅ Fixed gradlew"
+          fi
+          
+          # إصلاح ملف gradle.properties
+          if [ -f android/gradle.properties ]; then
+            sed -i 's/\r$//' android/gradle.properties
+            echo "✅ Fixed gradle.properties"
+          fi
+          
+          # إصلاح جميع ملفات .gradle
+          find android -name "*.gradle" -type f -exec sed -i 's/\r$//' {} \;
+          echo "✅ Fixed all .gradle files"
+          
+          # إصلاح أي ملفات أخرى قد تسبب مشاكل
+          find android -name "*.properties" -type f -exec sed -i 's/\r$//' {} \;
+          echo "✅ Fixed all .properties files"
+
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Build web
+      - name: Build web application
         run: npm run build
 
       - name: Install Capacitor Android
         run: npm install @capacitor/android
 
-      - name: Sync Capacitor
-        run: npx @capacitor/cli sync android
+      - name: Sync Capacitor with Android
+        run: npx cap sync android
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4
@@ -41,13 +60,43 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Build APK
+      - name: Clean environment variables
+        run: |
+          echo "JAVA_OPTS=" >> $GITHUB_ENV
+          echo "GRADLE_OPTS=" >> $GITHUB_ENV
+          echo "✅ Environment variables cleaned"
+
+      - name: Build debug APK
         run: |
           cd android
+          echo "📦 Building APK..."
+          ./gradlew clean
           ./gradlew assembleDebug --no-daemon
+        env:
+          JAVA_OPTS: "-Xmx1024m"
+          GRADLE_OPTS: "-Xmx1024m"
 
-      - name: Upload APK
+      - name: Verify APK exists
+        run: |
+          if [ -f "android/app/build/outputs/apk/debug/app-debug.apk" ]; then
+            echo "✅ APK built successfully"
+            ls -la android/app/build/outputs/apk/debug/
+          else
+            echo "❌ APK not found!"
+            exit 1
+          fi
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload APK as build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
