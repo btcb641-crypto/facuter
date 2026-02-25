@@ -3,7 +3,7 @@ import type { CapacitorConfig } from '@capacitor/core';
 const config: CapacitorConfig = {
   appId: 'com.ouldbouzidi.invoicemanager',
   appName: 'نظام الفواتير',
-  webDir: 'dist',
+  webDir: 'public',
   android: {
     allowMixedContent: true,
     captureInput: true,
